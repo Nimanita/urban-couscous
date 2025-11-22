@@ -10,7 +10,8 @@ import MetricCard from '../components/common/MetricCard';
 import TimeSeriesChart from '../components/dashboard/TimeSeriesChart';
 import ProgressBarChart from '../components/dashboard/ProgressBarChart';
 import DonutChart from '../components/dashboard/DonutChart';
-import { BookOpen, Clock, TrendingUp, Award, Flame } from 'lucide-react';
+import RecommendationCard from '../components/dashboard/RecommendationCard';
+import { BookOpen, Clock, TrendingUp, Award, Flame, Lightbulb } from 'lucide-react';
 import { formatTime } from '../utils/helpers';
 
 const Dashboard = () => {
@@ -33,6 +34,16 @@ const Dashboard = () => {
     }
   };
 
+  const handleDismissRecommendation = async (recId) => {
+    try {
+      await dashboardAPI.dismissRecommendation(recId);
+      // Refresh dashboard to update recommendations
+      fetchDashboard();
+    } catch (error) {
+      console.error('Failed to dismiss recommendation:', error);
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -43,8 +54,14 @@ const Dashboard = () => {
   }
 
   if (isStudent) {
-    const { summary, time_series, course_progress, completion_distribution, learning_streak } =
-      dashboardData;
+    const { 
+      summary, 
+      time_series, 
+      course_progress, 
+      completion_distribution, 
+      learning_streak,
+      recommendations = []
+    } = dashboardData;
 
     return (
       <>
@@ -103,37 +120,58 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <TimeSeriesChart data={time_series} />
-            <ProgressBarChart data={course_progress} />
+          {/* Charts and Recommendations Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="lg:col-span-2">
+              <TimeSeriesChart data={time_series} />
+            </div>
+            
+            {/* Recommendations Section */}
+            {recommendations.length > 0 && (
+              <div className="card">
+                <div className="flex items-center gap-2 mb-4">
+                  <Lightbulb className="h-5 w-5 text-yellow-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">Recommended</h3>
+                </div>
+                <div className="space-y-3">
+                  {recommendations.slice(0, 3).map((rec) => (
+                    <RecommendationCard
+                      key={rec.id}
+                      recommendation={rec}
+                      onDismiss={handleDismissRecommendation}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <ProgressBarChart data={course_progress} />
             <DonutChart data={completion_distribution} />
-            
-            {/* Quick Stats */}
-            <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">Avg. Session Time</span>
-                  <span className="text-lg font-bold text-primary-600">
-                    {formatTime(Math.round(summary.total_time_minutes / Math.max(summary.total_lessons_completed, 1)))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">Completion Rate</span>
-                  <span className="text-lg font-bold text-green-600">
-                    {summary.overall_progress_percentage.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">Active Courses</span>
-                  <span className="text-lg font-bold text-purple-600">
-                    {summary.courses_in_progress}
-                  </span>
-                </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Avg. Session Time</span>
+                <span className="text-lg font-bold text-primary-600">
+                  {formatTime(Math.round(summary.total_time_minutes / Math.max(summary.total_lessons_completed, 1)))}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Completion Rate</span>
+                <span className="text-lg font-bold text-green-600">
+                  {summary.overall_progress_percentage.toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Active Courses</span>
+                <span className="text-lg font-bold text-purple-600">
+                  {summary.courses_in_progress}
+                </span>
               </div>
             </div>
           </div>

@@ -62,14 +62,14 @@ const CourseDetail = () => {
 
   // Calculate progress statistics for students
   const completedLessons = isStudent
-    ? lessons.filter((l) => l.progress?.status === 'completed').length
+    ? lessons.filter((l) => l.status === 'completed').length
     : 0;
   const totalLessons = lessons.length;
   const progressPercentage = totalLessons > 0
     ? Math.round((completedLessons / totalLessons) * 100)
     : 0;
   const totalTimeSpent = isStudent
-    ? lessons.reduce((sum, l) => sum + (l.progress?.time_spent_minutes || 0), 0)
+    ? lessons.reduce((sum, l) => sum + (l.time_spent_minutes || 0), 0)
     : 0;
 
   return (

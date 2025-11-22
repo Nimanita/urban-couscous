@@ -11,8 +11,9 @@ import TimeSeriesChart from '../components/dashboard/TimeSeriesChart';
 import ProgressBarChart from '../components/dashboard/ProgressBarChart';
 import DonutChart from '../components/dashboard/DonutChart';
 import RecommendationCard from '../components/dashboard/RecommendationCard';
-import { BookOpen, Clock, TrendingUp, Award, Flame, Lightbulb } from 'lucide-react';
+import { BookOpen, Clock, TrendingUp, Award, Flame, Lightbulb, Download } from 'lucide-react';
 import { formatTime } from '../utils/helpers';
+import { exportDashboardToCSV, exportRecommendationsToCSV } from '../utils/exportUtils';
 
 const Dashboard = () => {
   const { user, isStudent } = useAuth();
@@ -44,6 +45,18 @@ const Dashboard = () => {
     }
   };
 
+  const handleExportDashboard = () => {
+    if (dashboardData) {
+      exportDashboardToCSV(dashboardData, user.first_name);
+    }
+  };
+
+  const handleExportRecommendations = () => {
+    if (dashboardData && dashboardData.recommendations) {
+      exportRecommendationsToCSV(dashboardData.recommendations, user.first_name);
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -67,13 +80,22 @@ const Dashboard = () => {
       <>
         <Navbar />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {user?.first_name}!
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Track your learning progress and achievements
-            </p>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Welcome back, {user?.first_name}!
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Track your learning progress and achievements
+              </p>
+            </div>
+            <button
+              onClick={handleExportDashboard}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
           </div>
 
           {/* Metrics Grid */}

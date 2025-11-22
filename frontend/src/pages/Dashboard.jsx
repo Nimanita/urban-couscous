@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { dashboardAPI } from '../api/dashboard';
 import Navbar from '../components/common/Navbar';
+import AdminNavbar from '../components/common/AdminNavbar';
+
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import MetricCard from '../components/common/MetricCard';
 import TimeSeriesChart from '../components/dashboard/TimeSeriesChart';
@@ -145,7 +147,7 @@ const Dashboard = () => {
 
   return (
     <>
-      <Navbar />
+      <AdminNavbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Mentor Dashboard</h1>

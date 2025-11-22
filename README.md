@@ -1728,4 +1728,3 @@ See also the list of [contributors](https://github.com/yourusername/learning-tra
 
 ---
 
-*Last Updated: January 2025*

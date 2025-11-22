@@ -71,7 +71,8 @@ A comprehensive full-stack web application for tracking student learning progres
 - ✅ Time tracking per lesson
 - ✅ Personal notes for each lesson
 - ✅ Last accessed timestamps
-
+- ✅ Export Dashboard Data to CSV
+- 
 ### Stretch Features
 
 #### Adaptive Recommendations
@@ -83,11 +84,13 @@ A comprehensive full-stack web application for tracking student learning progres
 - ✅ Priority-based recommendation system
 - ✅ Dismissible recommendations
 
+  
 #### Data Visualization
 - ✅ Interactive time series charts
 - ✅ Donut charts for completion distribution
 - ✅ Course progress bars
 - ✅ Real-time data updates
+
 
 #### Additional Features
 - ✅ Activity logging and tracking
@@ -96,15 +99,23 @@ A comprehensive full-stack web application for tracking student learning progres
 - ✅ Clear setup instructions
 - ✅ Responsive UI design
 
----
-
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-08" src="https://github.com/user-attachments/assets/efbcfe9c-703c-4608-b180-f1ea81889035" />
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-22" src="https://github.com/user-attachments/assets/3106b682-d5ad-4f91-99a1-692d4233790a" />
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-28" src="https://github.com/user-attachments/assets/fce4ad7d-524c-4afa-a578-46a67c52e680" />
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-39" src="https://github.com/user-attachments/assets/a77a08ea-8a07-4dc5-8925-02e24f886440" />
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-44" src="https://github.com/user-attachments/assets/d66ed2eb-a167-4e8f-b03b-ab09567c4699" />
+<img width="1920" height="1080" alt="Screenshot from 2025-11-22 16-30-50" src="https://github.com/user-attachments/assets/d4c6cc98-dc76-481f-9b55-b0a7832599c9" />
 ## 🏗️ Architecture
 
 ### System Architecture Diagram
 
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         CLIENT LAYER                             │
+
+
+
 │                                                                   │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │              React Frontend (Port 5173)                   │  │

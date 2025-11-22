@@ -8,6 +8,7 @@ from rest_framework import status
 from .serializers import ProgressSerializer, UpdateProgressSerializer
 from .services.ProgressService import ProgressService
 from .services.ActivityService import ActivityService
+from report.services.RecommendationService import RecommendationService
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -124,3 +125,84 @@ def mark_lesson_complete(request, lesson_id):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_recommendations(request):
+    """
+    GET /api/report/recommendations/
+    Get personalized recommendations for the student
+    """
+    if request.user.role != 'student':
+        return Response({
+            'success': False,
+            'error': 'Only students can get recommendations'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    result = RecommendationService.get_active_recommendations(request.user)
+    
+    if result['success']:
+        return Response({
+            'success': True,
+            'data': result['data']
+        })
+    else:
+        return Response({
+            'success': False,
+            'error': result['error']
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_recommendations(request):
+    """
+    POST /api/report/recommendations/generate/
+    Generate new recommendations for the student
+    """
+    if request.user.role != 'student':
+        return Response({
+            'success': False,
+            'error': 'Only students can generate recommendations'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    limit = request.data.get('limit', 5)
+    result = RecommendationService.generate_recommendations(request.user, limit=limit)
+    
+    if result['success']:
+        return Response({
+            'success': True,
+            'message': f'Generated {result["count"]} recommendations',
+            'count': result['count']
+        })
+    else:
+        return Response({
+            'success': False,
+            'error': result['error']
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_recommendation(request, recommendation_id):
+    """
+    POST /api/report/recommendations/{recommendation_id}/dismiss/
+    Dismiss a recommendation
+    """
+    if request.user.role != 'student':
+        return Response({
+            'success': False,
+            'error': 'Only students can dismiss recommendations'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    result = RecommendationService.dismiss_recommendation(request.user, recommendation_id)
+    
+    if result['success']:
+        return Response({
+            'success': True,
+            'message': 'Recommendation dismissed'
+        })
+    else:
+        return Response({
+            'success': False,
+            'error': result['error']
+        }, status=status.HTTP_404_NOT_FOUND)
+

@@ -2,11 +2,11 @@
 dashboard/services.py - Dashboard business logic
 """
 from django.db.models import Sum, Count, Q
-from report.models import Progress , Activity
+from report.models import Progress , Activity , Recommendation
 from courses.models import Course, Lesson
 from report.services.ProgressService import ProgressService
 from report.services.ActivityService import ActivityService
-
+from report.services.RecommendationService import RecommendationService
 class DashboardService:
     """Service class for dashboard operations"""
     
@@ -41,6 +41,17 @@ class DashboardService:
             if not streak_result['success']:
                 return streak_result
             
+            existing_recs = Recommendation.objects.filter(
+                student=student,
+                is_dismissed=False
+            ).count()
+            
+            if existing_recs == 0:
+                RecommendationService.generate_recommendations(student)
+            
+            # Get recommendations
+            recs_result = RecommendationService.get_active_recommendations(student)
+            
             return {
                 'success': True,
                 'data': {
@@ -48,7 +59,8 @@ class DashboardService:
                     'time_series': time_series_result['data'],
                     'course_progress': course_progress['data'],
                     'completion_distribution': distribution['data'],
-                    'learning_streak': streak_result['streak']
+                    'learning_streak': streak_result['streak'],
+                    'recommendations': recs_result['data'] if recs_result['success'] else []
                 }
             }
         except Exception as e:

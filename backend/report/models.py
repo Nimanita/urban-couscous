@@ -57,20 +57,14 @@ class Activity(models.Model):
         return f"{self.student.email} - {self.event_type}"
 
 
+
 class Recommendation(models.Model):
-    """Lesson recommendations"""
-    
-    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendations')
-    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='recommendations')
-    reason = models.TextField()
-    priority = models.PositiveIntegerField(default=3)
-    is_viewed = models.BooleanField(default=False)
-    is_accepted = models.BooleanField(default=False)
-    created_at = models.DateTimeField(default=timezone.now)
+    student = models.ForeignKey(User, on_delete=models.CASCADE)
+    lesson = models.ForeignKey('courses.Lesson', on_delete=models.CASCADE)
+    reason = models.TextField()  # Why this is recommended
+    priority = models.IntegerField(default=0)  # Higher = more important
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_dismissed = models.BooleanField(default=False)
     
     class Meta:
-        db_table = 'recommendations'
-        ordering = ['priority', '-created_at']
-    
-    def __str__(self):
-        return f"{self.student.email} - {self.lesson.title}"
+        ordering = ['-priority', '-created_at']

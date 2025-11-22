@@ -21,7 +21,8 @@ class ActivityAdmin(admin.ModelAdmin):
 
 @admin.register(Recommendation)
 class RecommendationAdmin(admin.ModelAdmin):
-    list_display = ['student', 'lesson', 'priority', 'is_viewed', 'is_accepted', 'created_at']
-    list_filter = ['priority', 'is_viewed', 'is_accepted']
+    list_display = ['student', 'lesson', 'priority', 'is_dismissed', 'created_at']
+    list_filter = ['priority', 'is_dismissed', 'created_at']
     search_fields = ['student__email', 'lesson__title', 'reason']
     raw_id_fields = ['student', 'lesson']
+    readonly_fields = ['created_at']

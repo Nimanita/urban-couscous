@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from datetime import timedelta
-from ..models import Progress
+from ..models import Progress , Activity
 
 
 class ProgressService:

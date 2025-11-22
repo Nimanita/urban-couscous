@@ -7,7 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Courses from './pages/Courses';
 import CourseDetail from './pages/CourseDetail';
 import Profile from './pages/Profile';
-
+import Register from './pages/Register';
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -50,7 +50,15 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
-
+      {/* Public Routes */}
+      <Route
+        path="/register"
+        element={
+          <PublicRoute>
+            <Register />
+          </PublicRoute>
+        }
+      />
       {/* Protected Routes */}
       <Route
         path="/dashboard"

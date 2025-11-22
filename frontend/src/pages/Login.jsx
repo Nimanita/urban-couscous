@@ -1,6 +1,6 @@
 // src/pages/Login.jsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BookOpen, Mail, Lock, AlertCircle } from 'lucide-react';
 
@@ -97,6 +97,19 @@ const Login = () => {
             </button>
           </form>
 
+          {/* Link to Register */}
+          <div className="mt-6 text-center">
+            <p className="text-sm text-gray-600">
+              Don't have an account?{' '}
+              <Link
+                to="/register"
+                className="text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Create one here
+              </Link>
+            </p>
+          </div>
+
           <div className="mt-6 pt-6 border-t border-gray-200">
             <p className="text-sm text-gray-600 mb-3 font-medium">
               Demo Accounts (Password: password123)
@@ -105,6 +118,7 @@ const Login = () => {
               {demoAccounts.map((account) => (
                 <button
                   key={account.email}
+                  type="button"
                   onClick={() => {
                     setEmail(account.email);
                     setPassword('password123');

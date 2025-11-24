@@ -3,7 +3,11 @@ courses/services.py - Course business logic
 """
 from django.db import transaction
 from ..models import Course, Lesson
-from report.models import Progress
+"""
+courses/services/LessonService.py - Lesson business logic
+"""
+from django.db import transaction
+from ..models import Course, Lesson
 
 
 class LessonService:
@@ -13,13 +17,24 @@ class LessonService:
     def get_lessons_by_course(course_id, student=None):
         """Get all lessons for a course with optional student progress"""
         try:
-            lessons = Lesson.objects.filter(course_id=course_id).order_by('order')
+            lessons = Lesson.objects.filter(
+                course_id=course_id
+            ).order_by('order')
             
             if student:
+                # Import ProgressService here to avoid circular import
+                from report.services.ProgressService import ProgressService
+                
                 lesson_data = []
                 for lesson in lessons:
-                    try:
-                        progress = Progress.objects.get(student=student, lesson=lesson)
+                    # Get progress from ProgressService
+                    progress_result = ProgressService.get_progress_by_lesson(
+                        student, 
+                        lesson.id
+                    )
+                    
+                    if progress_result['success']:
+                        progress = progress_result['progress']
                         progress_info = {
                             'status': progress.status,
                             'time_spent_minutes': progress.time_spent_minutes,
@@ -27,7 +42,7 @@ class LessonService:
                             'last_accessed': progress.last_accessed,
                             'notes': progress.notes
                         }
-                    except Progress.DoesNotExist:
+                    else:
                         progress_info = {
                             'status': 'not_started',
                             'time_spent_minutes': 0,

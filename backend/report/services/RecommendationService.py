@@ -1,27 +1,18 @@
 """
 report/services/RecommendationService.py - Adaptive recommendation logic
 """
-"""
-report/services/RecommendationService.py - Adaptive recommendation logic
-"""
-from django.db.models import Count, Avg, Q, F
+from django.db.models import F
 from django.utils import timezone
 from datetime import timedelta
-from report.models import Progress, Activity, Recommendation
-from courses.models import Lesson, Course
+from report.models import Progress, Recommendation
+
 
 class RecommendationService:
     """Service for generating adaptive learning recommendations"""
     
     @staticmethod
     def generate_recommendations(student, limit=5):
-        """
-        Generate personalized recommendations based on:
-        1. Current progress patterns
-        2. Learning velocity
-        3. Course completion gaps
-        4. Time since last activity
-        """
+        """Generate personalized recommendations based on learning patterns"""
         try:
             recommendations = []
             
@@ -29,28 +20,28 @@ class RecommendationService:
             Recommendation.objects.filter(student=student).delete()
             
             # Strategy 1: Continue in-progress lessons
-            in_progress_recs = RecommendationService.recommend_in_progress(student)
+            in_progress_recs = RecommendationService._recommend_in_progress(student)
             recommendations.extend(in_progress_recs)
             
             # Strategy 2: Fill gaps in courses with high completion
-            gap_recs = RecommendationService.recommend_course_gaps(student)
+            gap_recs = RecommendationService._recommend_course_gaps(student)
             recommendations.extend(gap_recs)
             
             # Strategy 3: Start next lesson in active courses
-            next_lesson_recs = RecommendationService.recommend_next_lessons(student)
+            next_lesson_recs = RecommendationService._recommend_next_lessons(student)
             recommendations.extend(next_lesson_recs)
             
             # Strategy 4: Revisit lessons with low time investment
-            review_recs = RecommendationService.recommend_reviews(student)
+            review_recs = RecommendationService._recommend_reviews(student)
             recommendations.extend(review_recs)
             
             # Strategy 5: Suggest new courses if current ones are going well
-            new_course_recs = RecommendationService.recommend_new_courses(student)
+            new_course_recs = RecommendationService._recommend_new_courses(student)
             recommendations.extend(new_course_recs)
             
             # Strategy 6: If no recommendations yet, recommend starting first lessons
             if len(recommendations) == 0:
-                beginner_recs = RecommendationService.recommend_beginner_courses(student)
+                beginner_recs = RecommendationService._recommend_beginner_courses(student)
                 recommendations.extend(beginner_recs)
             
             # Sort by priority and save top recommendations
@@ -76,7 +67,7 @@ class RecommendationService:
             return {'success': False, 'error': str(e)}
     
     @staticmethod
-    def recommend_in_progress(student):
+    def _recommend_in_progress(student):
         """Recommend lessons that are in progress (HIGH PRIORITY)"""
         recommendations = []
         
@@ -88,8 +79,6 @@ class RecommendationService:
             
             for progress in in_progress:
                 days_since_access = (timezone.now() - progress.last_accessed).days
-                
-                # Higher priority if recently accessed
                 priority = 90 - (days_since_access * 5)
                 
                 reason = f"You're {progress.time_spent_minutes} minutes into this lesson"
@@ -99,24 +88,31 @@ class RecommendationService:
                 recommendations.append({
                     'lesson': progress.lesson,
                     'reason': reason,
-                    'priority': max(priority, 70)  # Min priority 70
+                    'priority': max(priority, 70)
                 })
-        except Exception as e:
+        except Exception:
             pass
         
         return recommendations
     
     @staticmethod
-    def recommend_course_gaps(student):
+    def _recommend_course_gaps(student):
         """Recommend completing courses with >50% progress"""
         recommendations = []
         
         try:
-            # Get courses with significant progress
-            courses = Course.objects.filter(is_published=True).prefetch_related('lessons')
+            # Import CourseService here to avoid circular import
+            from courses.services.CourseService import CourseService
             
-            for course in courses:
-                total_lessons = course.lessons.count()
+            # Get all courses with lesson counts
+            courses_result = CourseService.get_courses_with_lesson_counts()
+            if not courses_result['success']:
+                return recommendations
+            
+            for course_data in courses_result['data']:
+                course = course_data['course']
+                total_lessons = course_data['total_lessons']
+                
                 if total_lessons == 0:
                     continue
                 
@@ -128,65 +124,64 @@ class RecommendationService:
                 
                 progress_percentage = (completed_count / total_lessons) * 100
                 
-                # Recommend if progress is between 50% and 95%
                 if 50 <= progress_percentage < 95:
-                    # Find all lessons in this course
                     completed_lesson_ids = Progress.objects.filter(
                         student=student,
                         lesson__course=course,
                         status='completed'
                     ).values_list('lesson_id', flat=True)
                     
-                    # Find next incomplete lesson in order
                     next_lesson = course.lessons.exclude(
                         id__in=completed_lesson_ids
                     ).order_by('order').first()
                     
                     if next_lesson:
-                        priority = 60 + int(progress_percentage * 0.3)  # 60-88 range
-                        
+                        priority = 60 + int(progress_percentage * 0.3)
                         recommendations.append({
                             'lesson': next_lesson,
                             'reason': f"You're {progress_percentage:.0f}% through {course.title} - finish strong!",
                             'priority': priority
                         })
-        except Exception as e:
+        except Exception:
             pass
         
         return recommendations
     
     @staticmethod
-    def recommend_next_lessons(student):
+    def _recommend_next_lessons(student):
         """Recommend next sequential lessons in active courses"""
         recommendations = []
         
         try:
-            # Get courses where student has recent activity
-            recent_activity = Activity.objects.filter(
-                student=student,
-                timestamp__gte=timezone.now() - timedelta(days=7)
-            ).values_list('lesson__course_id', flat=True).distinct()
+            # Import services here to avoid circular import
+            from courses.services.CourseService import CourseService
+            from report.services.ActivityService import ActivityService
             
-            active_courses = Course.objects.filter(
-                id__in=recent_activity,
-                is_published=True
-            ).prefetch_related('lessons')
+            # Get recent course activity
+            activity_result = ActivityService.get_recent_course_activity(student, days=7)
+            if not activity_result['success']:
+                return recommendations
             
-            for course in active_courses:
-                # Get completed lesson IDs
+            recent_course_ids = activity_result['course_ids']
+            
+            for course_id in recent_course_ids:
+                course_result = CourseService.get_course_by_id(course_id)
+                if not course_result['success']:
+                    continue
+                
+                course = course_result['course']
+                
                 completed_lesson_ids = Progress.objects.filter(
                     student=student,
                     lesson__course=course,
                     status='completed'
                 ).values_list('lesson_id', flat=True)
                 
-                # Find the first incomplete lesson
                 next_lesson = course.lessons.exclude(
                     id__in=completed_lesson_ids
                 ).order_by('order').first()
                 
                 if next_lesson:
-                    # Check if previous lesson was completed
                     prev_lessons = course.lessons.filter(
                         order__lt=next_lesson.order
                     ).order_by('-order')
@@ -204,18 +199,17 @@ class RecommendationService:
                                 'reason': f"Next lesson in {course.title}",
                                 'priority': 55
                             })
-        except Exception as e:
+        except Exception:
             pass
         
         return recommendations
     
     @staticmethod
-    def recommend_reviews(student):
+    def _recommend_reviews(student):
         """Recommend reviewing lessons with low time investment"""
         recommendations = []
         
         try:
-            # Find completed lessons with time spent < 50% of estimated time
             weak_lessons = Progress.objects.filter(
                 student=student,
                 status='completed',
@@ -230,22 +224,28 @@ class RecommendationService:
                     'reason': f"Quick review - you spent only {progress.time_spent_minutes}/{progress.lesson.estimated_minutes} min on this",
                     'priority': 40
                 })
-        except Exception as e:
+        except Exception:
             pass
         
         return recommendations
     
     @staticmethod
-    def recommend_new_courses(student):
+    def _recommend_new_courses(student):
         """Suggest new courses if student is doing well"""
         recommendations = []
         
         try:
-            # Check if student has completed at least one course fully
-            courses = Course.objects.filter(is_published=True).prefetch_related('lessons')
+            # Import CourseService here to avoid circular import
+            from courses.services.CourseService import CourseService
             
-            for course in courses:
-                total_lessons = course.lessons.count()
+            courses_result = CourseService.get_courses_with_lesson_counts()
+            if not courses_result['success']:
+                return recommendations
+            
+            for course_data in courses_result['data']:
+                course = course_data['course']
+                total_lessons = course_data['total_lessons']
+                
                 if total_lessons == 0:
                     continue
                 
@@ -255,42 +255,49 @@ class RecommendationService:
                     status='completed'
                 ).count()
                 
-                # Check if course is 100% complete
                 if completed_count == total_lessons:
-                    # Find courses not started yet
                     started_course_ids = Progress.objects.filter(
                         student=student
                     ).values_list('lesson__course_id', flat=True).distinct()
                     
-                    new_courses = Course.objects.filter(
-                        is_published=True
-                    ).exclude(id__in=started_course_ids).prefetch_related('lessons')[:2]
-                    
-                    for new_course in new_courses:
-                        first_lesson = new_course.lessons.order_by('order').first()
-                        if first_lesson:
-                            recommendations.append({
-                                'lesson': first_lesson,
-                                'reason': f"Start a new challenge: {new_course.title}",
-                                'priority': 30
-                            })
-                    break  # Only check once
-        except Exception as e:
+                    new_courses_result = CourseService.get_all_courses(is_published=True)
+                    if new_courses_result['success']:
+                        new_courses = [
+                            c for c in new_courses_result['courses'] 
+                            if c.id not in started_course_ids
+                        ][:2]
+                        
+                        for new_course in new_courses:
+                            first_lesson = new_course.lessons.order_by('order').first()
+                            if first_lesson:
+                                recommendations.append({
+                                    'lesson': first_lesson,
+                                    'reason': f"Start a new challenge: {new_course.title}",
+                                    'priority': 30
+                                })
+                    break
+        except Exception:
             pass
         
         return recommendations
     
     @staticmethod
-    def recommend_beginner_courses(student):
+    def _recommend_beginner_courses(student):
         """Recommend beginner courses for new students"""
         recommendations = []
         
         try:
-            # Get beginner courses
-            beginner_courses = Course.objects.filter(
-                is_published=True,
-                difficulty='beginner'
-            ).prefetch_related('lessons').order_by('id')[:3]
+            # Import CourseService here to avoid circular import
+            from courses.services.CourseService import CourseService
+            
+            courses_result = CourseService.get_all_courses(is_published=True)
+            if not courses_result['success']:
+                return recommendations
+            
+            beginner_courses = [
+                c for c in courses_result['courses'] 
+                if hasattr(c, 'difficulty') and c.difficulty == 'beginner'
+            ][:3]
             
             for course in beginner_courses:
                 first_lesson = course.lessons.order_by('order').first()
@@ -301,12 +308,8 @@ class RecommendationService:
                         'priority': 85
                     })
             
-            # If no beginner courses, recommend any first lessons
             if len(recommendations) == 0:
-                all_courses = Course.objects.filter(
-                    is_published=True
-                ).prefetch_related('lessons').order_by('id')[:3]
-                
+                all_courses = courses_result['courses'][:3]
                 for course in all_courses:
                     first_lesson = course.lessons.order_by('order').first()
                     if first_lesson:
@@ -315,7 +318,7 @@ class RecommendationService:
                             'reason': f"Begin with {course.title}",
                             'priority': 80
                         })
-        except Exception as e:
+        except Exception:
             pass
         
         return recommendations

@@ -1,12 +1,9 @@
 """
-dashboard/services.py - Dashboard business logic
+dashboard/services/DashboardService.py - Dashboard business logic
 """
-from django.db.models import Sum, Count, Q
-from report.models import Progress , Activity , Recommendation
-from courses.models import Course, Lesson
-from report.services.ProgressService import ProgressService
-from report.services.ActivityService import ActivityService
-from report.services.RecommendationService import RecommendationService
+from report.models import Recommendation
+
+
 class DashboardService:
     """Service class for dashboard operations"""
     
@@ -14,6 +11,11 @@ class DashboardService:
     def get_student_dashboard_data(student):
         """Get complete dashboard data for a student"""
         try:
+            # Import services here to avoid circular import
+            from report.services.ProgressService import ProgressService
+            from report.services.ActivityService import ActivityService
+            from report.services.RecommendationService import RecommendationService
+            
             # Get overall stats
             stats_result = ProgressService.get_student_overall_stats(student)
             if not stats_result['success']:
@@ -41,6 +43,7 @@ class DashboardService:
             if not streak_result['success']:
                 return streak_result
             
+            # Check and generate recommendations if needed
             existing_recs = Recommendation.objects.filter(
                 student=student,
                 is_dismissed=False
@@ -70,20 +73,33 @@ class DashboardService:
     def get_course_progress_chart(student):
         """Get progress percentage for each course"""
         try:
-            courses = Course.objects.filter(is_published=True).prefetch_related('lessons')
+            # Import services here to avoid circular import
+            from courses.services.CourseService import CourseService
+            from report.services.ProgressService import ProgressService
+            
+            # Get all courses with lesson counts
+            courses_result = CourseService.get_courses_with_lesson_counts()
+            if not courses_result['success']:
+                return courses_result
             
             data = []
-            for course in courses:
-                total_lessons = course.lessons.count()
+            for course_data in courses_result['data']:
+                course = course_data['course']
+                total_lessons = course_data['total_lessons']
+                
                 if total_lessons == 0:
                     continue
                 
-                completed_lessons = Progress.objects.filter(
-                    student=student,
-                    lesson__course=course,
-                    status='completed'
-                ).count()
+                # Get completed lessons from ProgressService
+                completed_result = ProgressService.get_completed_lessons_for_course(
+                    student,
+                    course.id
+                )
                 
+                if not completed_result['success']:
+                    continue
+                
+                completed_lessons = completed_result['count']
                 progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
                 
                 data.append({
@@ -100,20 +116,30 @@ class DashboardService:
     def get_completion_distribution(student):
         """Get distribution of lesson statuses"""
         try:
-            # Get all published lessons
-            total_lessons = Lesson.objects.filter(course__is_published=True).count()
+            # Import services here to avoid circular import
+            from courses.services.CourseService import CourseService
+            from report.services.ProgressService import ProgressService
+            
+            # Get total published lessons
+            total_lessons_result = CourseService.get_total_published_lessons_count()
+            if not total_lessons_result['success']:
+                return total_lessons_result
+            
+            total_lessons = total_lessons_result['count']
             
             # Get completed lessons
-            completed = Progress.objects.filter(
-                student=student,
-                status='completed'
-            ).count()
+            completed_result = ProgressService.get_completed_count(student)
+            if not completed_result['success']:
+                return completed_result
+            
+            completed = completed_result['count']
             
             # Get in progress lessons
-            in_progress = Progress.objects.filter(
-                student=student,
-                status='in_progress'
-            ).count()
+            in_progress_result = ProgressService.get_in_progress_count(student)
+            if not in_progress_result['success']:
+                return in_progress_result
+            
+            in_progress = in_progress_result['count']
             
             # Calculate not started
             not_started = total_lessons - completed - in_progress
@@ -132,9 +158,17 @@ class DashboardService:
     def get_mentor_dashboard_data():
         """Get dashboard data for mentors"""
         try:
-            from users.models import User
+            # Import services here to avoid circular import
+            from users.services.UserService import UserService
+            from report.services.ProgressService import ProgressService
+            from courses.services.CourseService import CourseService
             
-            students = User.objects.filter(role='student', is_active=True)
+            # Get all students
+            students_result = UserService.get_all_students()
+            if not students_result['success']:
+                return students_result
+            
+            students = students_result['students']
             
             student_data = []
             for student in students:
@@ -149,12 +183,17 @@ class DashboardService:
             
             # Calculate average completion rate
             if student_data:
-                avg_completion = sum(s['stats']['overall_progress_percentage'] for s in student_data) / len(student_data)
+                avg_completion = sum(
+                    s['stats']['overall_progress_percentage'] for s in student_data
+                ) / len(student_data)
             else:
                 avg_completion = 0
             
             # Find students needing help (< 30% progress)
-            students_needing_help = [s for s in student_data if s['stats']['overall_progress_percentage'] < 30]
+            students_needing_help = [
+                s for s in student_data 
+                if s['stats']['overall_progress_percentage'] < 30
+            ]
             
             return {
                 'success': True,

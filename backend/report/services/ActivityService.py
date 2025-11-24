@@ -1,8 +1,8 @@
 """
-progress/services.py - Progress tracking business logic
+report/services/ActivityService.py - Activity tracking business logic
 """
 from django.db import transaction
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count
 from django.utils import timezone
 from datetime import timedelta
 from ..models import Activity
@@ -83,5 +83,18 @@ class ActivityService:
                     break
             
             return {'success': True, 'streak': streak}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_recent_course_activity(student, days=7):
+        """Get list of course IDs with recent activity"""
+        try:
+            course_ids = Activity.objects.filter(
+                student=student,
+                timestamp__gte=timezone.now() - timedelta(days=days)
+            ).values_list('lesson__course_id', flat=True).distinct()
+            
+            return {'success': True, 'course_ids': list(course_ids)}
         except Exception as e:
             return {'success': False, 'error': str(e)}

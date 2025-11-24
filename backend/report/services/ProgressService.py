@@ -1,11 +1,11 @@
 """
-progress/services.py - Progress tracking business logic
+report/services/ProgressService.py - Progress tracking business logic
 """
 from django.db import transaction
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count
 from django.utils import timezone
 from datetime import timedelta
-from ..models import Progress , Activity
+from ..models import Progress, Activity
 
 
 class ProgressService:
@@ -75,8 +75,44 @@ class ProgressService:
     def get_student_progress(student):
         """Get all progress records for a student"""
         try:
-            progress_records = Progress.objects.filter(student=student).select_related('lesson', 'lesson__course')
+            progress_records = Progress.objects.filter(
+                student=student
+            ).select_related('lesson', 'lesson__course')
             return {'success': True, 'progress': progress_records}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_completed_count(student):
+        """Get total completed lessons count for a student"""
+        try:
+            count = Progress.objects.filter(
+                student=student,
+                status='completed'
+            ).count()
+            return {'success': True, 'count': count}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_total_time_spent(student):
+        """Get total time spent by student across all lessons"""
+        try:
+            total_time = Progress.objects.filter(
+                student=student
+            ).aggregate(total=Sum('time_spent_minutes'))['total'] or 0
+            return {'success': True, 'total_time': total_time}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_courses_in_progress_count(student):
+        """Get count of courses student has progress in"""
+        try:
+            count = Progress.objects.filter(
+                student=student
+            ).values('lesson__course').distinct().count()
+            return {'success': True, 'count': count}
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
@@ -84,26 +120,38 @@ class ProgressService:
     def get_student_overall_stats(student):
         """Get overall statistics for a student"""
         try:
-            # Total lessons completed
-            completed_count = Progress.objects.filter(
-                student=student,
-                status='completed'
-            ).count()
+            # Import CourseService here to avoid circular import
+            from courses.services.CourseService import CourseService
             
-            # Total time spent
-            total_time = Progress.objects.filter(
-                student=student
-            ).aggregate(total=Sum('time_spent_minutes'))['total'] or 0
+            # Get completed count
+            completed_result = ProgressService.get_completed_count(student)
+            if not completed_result['success']:
+                return completed_result
+            completed_count = completed_result['count']
             
-            # Courses in progress
-            courses_in_progress = Progress.objects.filter(
-                student=student
-            ).values('lesson__course').distinct().count()
+            # Get total time
+            time_result = ProgressService.get_total_time_spent(student)
+            if not time_result['success']:
+                return time_result
+            total_time = time_result['total_time']
             
-            # Overall progress percentage
-            from courses.models import Lesson
-            total_lessons = Lesson.objects.filter(course__is_published=True).count()
-            overall_progress = (completed_count / total_lessons * 100) if total_lessons > 0 else 0
+            # Get courses in progress
+            courses_result = ProgressService.get_courses_in_progress_count(student)
+            if not courses_result['success']:
+                return courses_result
+            courses_in_progress = courses_result['count']
+            
+            # Get total published lessons from CourseService
+            total_lessons_result = CourseService.get_total_published_lessons_count()
+            if not total_lessons_result['success']:
+                return total_lessons_result
+            total_published_lessons = total_lessons_result['count']
+            
+            # Calculate overall progress
+            overall_progress = (
+                (completed_count / total_published_lessons * 100) 
+                if total_published_lessons > 0 else 0
+            )
             
             return {
                 'success': True,
@@ -114,6 +162,57 @@ class ProgressService:
                     'overall_progress_percentage': round(overall_progress, 2)
                 }
             }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_completed_lessons_for_course(student, course_id):
+        """Get count of completed lessons for a specific course"""
+        try:
+            count = Progress.objects.filter(
+                student=student,
+                lesson__course_id=course_id,
+                status='completed'
+            ).count()
+            return {'success': True, 'count': count}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_in_progress_count(student):
+        """Get count of in-progress lessons"""
+        try:
+            count = Progress.objects.filter(
+                student=student,
+                status='in_progress'
+            ).count()
+            return {'success': True, 'count': count}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_progress_by_lesson(student, lesson_id):
+        """Get progress for a specific lesson"""
+        try:
+            progress = Progress.objects.get(
+                student=student,
+                lesson_id=lesson_id
+            )
+            return {'success': True, 'progress': progress}
+        except Progress.DoesNotExist:
+            return {'success': False, 'error': 'Progress not found'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_time_spent_for_course(student, course_id):
+        """Get total time spent on a course"""
+        try:
+            time_spent = Progress.objects.filter(
+                student=student,
+                lesson__course_id=course_id
+            ).aggregate(total=Sum('time_spent_minutes'))['total'] or 0
+            return {'success': True, 'time_spent': time_spent}
         except Exception as e:
             return {'success': False, 'error': str(e)}
 

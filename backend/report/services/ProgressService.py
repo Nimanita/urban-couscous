@@ -1,6 +1,6 @@
 
 from django.db import transaction
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count , Q
 from django.utils import timezone
 from datetime import timedelta
 from ..models import Progress, Activity
@@ -245,3 +245,78 @@ class ProgressService:
         except Exception as e:
             return {'success': False, 'error': str(e)}
 
+    @staticmethod
+    def get_student_overall_stats_optimized(student):
+        """
+        Get overall statistics for a student with SINGLE aggregation query
+        This replaces multiple individual calls with one efficient query
+        """
+        try:
+            from ..models import Progress
+            from courses.models import Lesson
+            
+            # Single aggregation query for ALL stats
+            stats = Progress.objects.filter(student=student).aggregate(
+                total_completed=Count('id', filter=Q(status='completed')),
+                total_in_progress=Count('id', filter=Q(status='in_progress')),
+                total_time=Sum('time_spent_minutes'),
+                courses_count=Count('lesson__course', distinct=True)
+            )
+            
+            # Get total published lessons (single query, can be cached)
+            total_published_lessons = Lesson.objects.filter(
+                course__is_published=True
+            ).count()
+            
+            completed_count = stats['total_completed'] or 0
+            total_time = stats['total_time'] or 0
+            
+            overall_progress = (
+                (completed_count / total_published_lessons * 100) 
+                if total_published_lessons > 0 else 0
+            )
+            
+            return {
+                'success': True,
+                'stats': {
+                    'total_lessons_completed': completed_count,
+                    'total_time_minutes': total_time,
+                    'courses_in_progress': stats['courses_count'] or 0,
+                    'overall_progress_percentage': round(overall_progress, 2),
+                    'total_in_progress': stats['total_in_progress'] or 0,  # Extra data for distribution
+                    'total_published_lessons': total_published_lessons  # Extra data for distribution
+                }
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_all_course_progress_batch(student, course_ids):
+        """
+        Get progress for multiple courses in minimal queries
+        Returns: {course_id: {completed_count, total_time}}
+        """
+        try:
+            from ..models import Progress
+            
+            # Single query with grouping by course
+            course_stats = Progress.objects.filter(
+                student=student,
+                lesson__course_id__in=course_ids
+            ).values('lesson__course_id').annotate(
+                completed_count=Count('id', filter=Q(status='completed')),
+                total_time=Sum('time_spent_minutes')
+            )
+            
+            # Convert to dictionary
+            stats_dict = {}
+            for stat in course_stats:
+                course_id = stat['lesson__course_id']
+                stats_dict[course_id] = {
+                    'completed_count': stat['completed_count'] or 0,
+                    'total_time': stat['total_time'] or 0
+                }
+            
+            return {'success': True, 'stats': stats_dict}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}

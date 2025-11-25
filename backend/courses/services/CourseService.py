@@ -1,8 +1,6 @@
-"""
-courses/services/CourseService.py - Course business logic
-"""
+
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Count, Q
 from ..models import Course, Lesson
 
 
@@ -40,17 +38,19 @@ class CourseService:
     
     @staticmethod
     def get_courses_with_lesson_counts():
-        """Get all published courses with their lesson counts"""
+        """Get all published courses with their lesson counts (OPTIMIZED)"""
         try:
             courses = Course.objects.filter(
                 is_published=True
-            ).prefetch_related('lessons')
+            ).prefetch_related('lessons').annotate(
+                lesson_count=Count('lessons')
+            )
             
             course_data = []
             for course in courses:
                 course_data.append({
                     'course': course,
-                    'total_lessons': course.lessons.count()
+                    'total_lessons': course.lesson_count
                 })
             
             return {'success': True, 'data': course_data}
@@ -59,41 +59,62 @@ class CourseService:
     
     @staticmethod
     def get_courses_with_student_progress(student):
-        """Get all courses with student progress"""
+        """Get all courses with student progress (OPTIMIZED - SERVICE LAYER)"""
         try:
-            # Import ProgressService here to avoid circular import
             from report.services.ProgressService import ProgressService
             
-            courses = Course.objects.filter(is_published=True).prefetch_related('lessons')
+            # Get all courses with lessons
+            courses = Course.objects.filter(
+                is_published=True
+            ).prefetch_related('lessons')
             
+            # Collect all lesson IDs across all courses
+            all_lesson_ids = []
+            course_lesson_map = {}  # course_id -> [lesson_ids]
+            
+            for course in courses:
+                lesson_ids = [lesson.id for lesson in course.lessons.all()]
+                all_lesson_ids.extend(lesson_ids)
+                course_lesson_map[course.id] = lesson_ids
+            
+            # Single batch call to ProgressService
+            progress_result = ProgressService.get_progress_for_lessons(
+                student,
+                all_lesson_ids
+            )
+            
+            if not progress_result['success']:
+                return progress_result
+            
+            progress_dict = progress_result['progress_dict']
+            
+            # Calculate statistics for each course
             course_data = []
             for course in courses:
-                total_lessons = course.lessons.count()
+                lesson_ids = course_lesson_map[course.id]
+                total_lessons = len(lesson_ids)
                 
-                # Get completed lessons from ProgressService
-                completed_result = ProgressService.get_completed_lessons_for_course(
-                    student, 
-                    course.id
-                )
-                if not completed_result['success']:
-                    continue
+                completed_count = 0
+                total_time = 0
                 
-                completed_lessons = completed_result['count']
+                for lesson_id in lesson_ids:
+                    if lesson_id in progress_dict:
+                        prog = progress_dict[lesson_id]
+                        if prog['status'] == 'completed':
+                            completed_count += 1
+                        total_time += prog['time_spent_minutes'] or 0
+                
                 progress_percentage = (
-                    (completed_lessons / total_lessons * 100) 
+                    (completed_count / total_lessons * 100) 
                     if total_lessons > 0 else 0
                 )
-                
-                # Get time spent from ProgressService
-                time_result = ProgressService.get_time_spent_for_course(student, course.id)
-                time_spent = time_result['time_spent'] if time_result['success'] else 0
                 
                 course_data.append({
                     'course': course,
                     'total_lessons': total_lessons,
-                    'completed_lessons': completed_lessons,
+                    'completed_lessons': completed_count,
                     'progress_percentage': round(progress_percentage, 2),
-                    'time_spent_minutes': time_spent,
+                    'time_spent_minutes': total_time,
                     'status': (
                         'completed' if progress_percentage == 100 
                         else ('in_progress' if progress_percentage > 0 else 'not_started')

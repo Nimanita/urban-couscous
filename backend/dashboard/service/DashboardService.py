@@ -1,7 +1,8 @@
 """
-dashboard/services/DashboardService.py - Dashboard business logic
+dashboard/services/DashboardService.py - Dashboard business logic (SUPER OPTIMIZED)
 """
 from report.models import Recommendation
+from courses.models import Course, Lesson
 
 
 class DashboardService:
@@ -9,61 +10,130 @@ class DashboardService:
     
     @staticmethod
     def get_student_dashboard_data(student):
-        """Get complete dashboard data for a student"""
+        """Get complete dashboard data for a student (SUPER OPTIMIZED)"""
         try:
-            # Import services here to avoid circular import
             from report.services.ProgressService import ProgressService
             from report.services.ActivityService import ActivityService
             from report.services.RecommendationService import RecommendationService
             
-            # Get overall stats
-            stats_result = ProgressService.get_student_overall_stats(student)
+            # =================================================================
+            # OPTIMIZATION 1: Single aggregation query for ALL stats
+            # =================================================================
+            stats_result = ProgressService.get_student_overall_stats_optimized(student)
             if not stats_result['success']:
                 return stats_result
             
-            stats = stats_result['stats']
+            summary = stats_result['stats']
             
-            # Get time series data
+            # =================================================================
+            # OPTIMIZATION 2: Time series data (already optimized)
+            # =================================================================
             time_series_result = ActivityService.get_daily_time_series(student, days=30)
-            if not time_series_result['success']:
-                return time_series_result
             
-            # Get course progress
-            course_progress = DashboardService.get_course_progress_chart(student)
-            if not course_progress['success']:
-                return course_progress
+            # =================================================================
+            # OPTIMIZATION 3: Course progress with MINIMAL queries
+            # =================================================================
+            # Get all courses
+            courses = Course.objects.filter(
+                is_published=True
+            ).prefetch_related('lessons')
             
-            # Get completion distribution
-            distribution = DashboardService.get_completion_distribution(student)
-            if not distribution['success']:
-                return distribution
+            # Collect course IDs and lesson counts
+            course_data = {}
+            for course in courses:
+                lesson_count = course.lessons.count()
+                course_data[course.id] = {
+                    'name': course.title,
+                    'total_lessons': lesson_count
+                }
             
-            # Get learning streak
+            course_ids = list(course_data.keys())
+            
+            # Get all progress in ONE query using batch method
+            progress_result = ProgressService.get_all_course_progress_batch(student, course_ids)
+            if not progress_result['success']:
+                return progress_result
+            
+            progress_stats = progress_result['stats']
+            
+            # Build course progress data
+            course_progress_data = []
+            for course_id, data in course_data.items():
+                total_lessons = data['total_lessons']
+                if total_lessons == 0:
+                    continue
+                
+                stats = progress_stats.get(course_id, {'completed_count': 0})
+                completed = stats['completed_count']
+                progress_pct = (completed / total_lessons * 100) if total_lessons > 0 else 0
+                
+                course_progress_data.append({
+                    'course_id': course_id,
+                    'course_name': data['name'],
+                    'progress': round(progress_pct, 2)
+                })
+            
+            # =================================================================
+            # OPTIMIZATION 4: Completion distribution (use aggregated data)
+            # =================================================================
+            completed = summary['total_lessons_completed']
+            in_progress = summary['total_in_progress']
+            total_published = summary['total_published_lessons']
+            not_started = total_published - completed - in_progress
+            
+            distribution_data = [
+                {'name': 'Completed', 'value': completed},
+                {'name': 'In Progress', 'value': in_progress},
+                {'name': 'Not Started', 'value': not_started}
+            ]
+            
+            # =================================================================
+            # OPTIMIZATION 5: Learning streak
+            # =================================================================
             streak_result = ActivityService.get_learning_streak(student)
-            if not streak_result['success']:
-                return streak_result
             
-            # Check and generate recommendations if needed
-            existing_recs = Recommendation.objects.filter(
+            # =================================================================
+            # OPTIMIZATION 6: Recommendations with select_related
+            # =================================================================
+            recommendations = Recommendation.objects.filter(
                 student=student,
                 is_dismissed=False
-            ).count()
+            ).select_related('lesson', 'lesson__course')
             
-            if existing_recs == 0:
+            if not recommendations.exists():
                 RecommendationService.generate_recommendations(student)
+                recommendations = Recommendation.objects.filter(
+                    student=student,
+                    is_dismissed=False
+                ).select_related('lesson', 'lesson__course')
             
-            # Get recommendations
-            recs_result = RecommendationService.get_active_recommendations(student)
+            recs_data = [{
+                'id': rec.id,
+                'lesson': {
+                    'id': rec.lesson.id,
+                    'title': rec.lesson.title,
+                    'course_title': rec.lesson.course.title,
+                    'estimated_minutes': rec.lesson.estimated_minutes
+                },
+                'reason': rec.reason,
+                'priority': rec.priority,
+                'created_at': rec.created_at
+            } for rec in recommendations]
             
             return {
                 'success': True,
                 'data': {
-                    'summary': stats,
-                    'time_series': time_series_result['data'],
-                    'course_progress': course_progress['data'],
-                    'completion_distribution': distribution['data'],
-                    'learning_streak': streak_result['streak'],
-                    'recommendations': recs_result['data'] if recs_result['success'] else []
+                    'summary': {
+                        'total_lessons_completed': summary['total_lessons_completed'],
+                        'total_time_minutes': summary['total_time_minutes'],
+                        'courses_in_progress': summary['courses_in_progress'],
+                        'overall_progress_percentage': summary['overall_progress_percentage']
+                    },
+                    'time_series': time_series_result['data'] if time_series_result['success'] else [],
+                    'course_progress': course_progress_data,
+                    'completion_distribution': distribution_data,
+                    'learning_streak': streak_result['streak'] if streak_result['success'] else 0,
+                    'recommendations': recs_data
                 }
             }
         except Exception as e:
@@ -71,40 +141,46 @@ class DashboardService:
     
     @staticmethod
     def get_course_progress_chart(student):
-        """Get progress percentage for each course"""
+        """Get progress percentage for each course (OPTIMIZED)"""
         try:
-            # Import services here to avoid circular import
-            from courses.services.CourseService import CourseService
             from report.services.ProgressService import ProgressService
             
-            # Get all courses with lesson counts
-            courses_result = CourseService.get_courses_with_lesson_counts()
-            if not courses_result['success']:
-                return courses_result
+            # Get all courses
+            courses = Course.objects.filter(
+                is_published=True
+            ).prefetch_related('lessons')
             
+            # Build course data
+            course_data = {}
+            course_ids = []
+            for course in courses:
+                lesson_count = course.lessons.count()
+                if lesson_count > 0:
+                    course_data[course.id] = {
+                        'name': course.title,
+                        'total_lessons': lesson_count
+                    }
+                    course_ids.append(course.id)
+            
+            # Get all progress in one query
+            progress_result = ProgressService.get_all_course_progress_batch(student, course_ids)
+            if not progress_result['success']:
+                return progress_result
+            
+            progress_stats = progress_result['stats']
+            
+            # Calculate progress percentages
             data = []
-            for course_data in courses_result['data']:
-                course = course_data['course']
-                total_lessons = course_data['total_lessons']
+            for course_id, info in course_data.items():
+                stats = progress_stats.get(course_id, {'completed_count': 0})
+                completed = stats['completed_count']
+                total = info['total_lessons']
                 
-                if total_lessons == 0:
-                    continue
-                
-                # Get completed lessons from ProgressService
-                completed_result = ProgressService.get_completed_lessons_for_course(
-                    student,
-                    course.id
-                )
-                
-                if not completed_result['success']:
-                    continue
-                
-                completed_lessons = completed_result['count']
-                progress_percentage = round((completed_lessons / total_lessons) * 100, 2)
+                progress_percentage = round((completed / total) * 100, 2)
                 
                 data.append({
-                    'course_id': course.id,
-                    'course_name': course.title,
+                    'course_id': course_id,
+                    'course_name': info['name'],
                     'progress': progress_percentage
                 })
             
@@ -114,35 +190,21 @@ class DashboardService:
     
     @staticmethod
     def get_completion_distribution(student):
-        """Get distribution of lesson statuses"""
+        """Get distribution of lesson statuses (OPTIMIZED)"""
         try:
-            # Import services here to avoid circular import
-            from courses.services.CourseService import CourseService
             from report.services.ProgressService import ProgressService
             
-            # Get total published lessons
-            total_lessons_result = CourseService.get_total_published_lessons_count()
-            if not total_lessons_result['success']:
-                return total_lessons_result
+            # Use the optimized stats method that already has this data
+            stats_result = ProgressService.get_student_overall_stats_optimized(student)
+            if not stats_result['success']:
+                return stats_result
             
-            total_lessons = total_lessons_result['count']
+            stats = stats_result['stats']
             
-            # Get completed lessons
-            completed_result = ProgressService.get_completed_count(student)
-            if not completed_result['success']:
-                return completed_result
-            
-            completed = completed_result['count']
-            
-            # Get in progress lessons
-            in_progress_result = ProgressService.get_in_progress_count(student)
-            if not in_progress_result['success']:
-                return in_progress_result
-            
-            in_progress = in_progress_result['count']
-            
-            # Calculate not started
-            not_started = total_lessons - completed - in_progress
+            completed = stats['total_lessons_completed']
+            in_progress = stats['total_in_progress']
+            total = stats['total_published_lessons']
+            not_started = total - completed - in_progress
             
             data = [
                 {'name': 'Completed', 'value': completed},
@@ -156,12 +218,10 @@ class DashboardService:
     
     @staticmethod
     def get_mentor_dashboard_data():
-        """Get dashboard data for mentors"""
+        """Get dashboard data for mentors (OPTIMIZED)"""
         try:
-            # Import services here to avoid circular import
             from users.services.UserService import UserService
             from report.services.ProgressService import ProgressService
-            from courses.services.CourseService import CourseService
             
             # Get all students
             students_result = UserService.get_all_students()
@@ -170,15 +230,22 @@ class DashboardService:
             
             students = students_result['students']
             
+            # Get stats for each student using optimized method
             student_data = []
             for student in students:
-                stats_result = ProgressService.get_student_overall_stats(student)
+                stats_result = ProgressService.get_student_overall_stats_optimized(student)
                 if stats_result['success']:
+                    stats = stats_result['stats']
                     student_data.append({
                         'student_id': student.id,
                         'student_name': student.full_name,
                         'student_email': student.email,
-                        'stats': stats_result['stats']
+                        'stats': {
+                            'total_lessons_completed': stats['total_lessons_completed'],
+                            'total_time_minutes': stats['total_time_minutes'],
+                            'courses_in_progress': stats['courses_in_progress'],
+                            'overall_progress_percentage': stats['overall_progress_percentage']
+                        }
                     })
             
             # Calculate average completion rate

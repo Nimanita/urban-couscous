@@ -59,6 +59,12 @@ class Lesson(models.Model):
         db_table = 'lessons'
         ordering = ['course', 'order']
         unique_together = [['course', 'order']]
+        
+        indexes = [
+            # Reason: filter course.lessons.order_by('order')
+            # Used in: get_lessons_by_course, recommendation engine (finding next lesson)
+            models.Index(fields=['course', 'order']),
+        ]
     
     def __str__(self):
         return f"{self.course.title} - {self.title}"

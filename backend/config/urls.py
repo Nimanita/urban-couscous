@@ -16,11 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('silk/', include('silk.urls', namespace='silk')),
     path('api/auth/', include('users.urls', namespace='users')),
     path('api/courses/', include('courses.urls', namespace='courses')),
     path('api/report/', include('report.urls', namespace='report')),
-    path('api/dashboard/', include('dashboard.urls', namespace='dashboard'))
+    path('api/dashboard/', include('dashboard.urls', namespace='dashboard')),
 ]

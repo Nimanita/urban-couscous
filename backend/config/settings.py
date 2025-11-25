@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'silk',
     'rest_framework',
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
@@ -51,7 +52,9 @@ INSTALLED_APPS = [
     
 ]
 
+INTERNAL_IPS = ["127.0.0.1"]
 MIDDLEWARE = [
+    'silk.middleware.SilkyMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',

@@ -1,11 +1,4 @@
-"""
-courses/services.py - Course business logic
-"""
-from django.db import transaction
-from ..models import Course, Lesson
-"""
-courses/services/LessonService.py - Lesson business logic
-"""
+
 from django.db import transaction
 from ..models import Course, Lesson
 
@@ -15,41 +8,43 @@ class LessonService:
     
     @staticmethod
     def get_lessons_by_course(course_id, student=None):
-        """Get all lessons for a course with optional student progress"""
+        """Get all lessons for a course with optional student progress (OPTIMIZED)"""
         try:
+            # Fetch all lessons with course data in one query
             lessons = Lesson.objects.filter(
                 course_id=course_id
-            ).order_by('order')
+            ).select_related('course').order_by('order')
             
             if student:
                 # Import ProgressService here to avoid circular import
                 from report.services.ProgressService import ProgressService
                 
+                # Get all lesson IDs
+                lesson_ids = [lesson.id for lesson in lessons]
+                
+                # Fetch ALL progress records in ONE service call
+                # This replaces the N individual queries with just 1 query
+                progress_result = ProgressService.get_progress_for_lessons(
+                    student, 
+                    lesson_ids
+                )
+                
+                if not progress_result['success']:
+                    return progress_result
+                
+                progress_dict = progress_result['progress_dict']
+                
+                # Build response data with O(1) lookups
                 lesson_data = []
                 for lesson in lessons:
-                    # Get progress from ProgressService
-                    progress_result = ProgressService.get_progress_by_lesson(
-                        student, 
-                        lesson.id
-                    )
-                    
-                    if progress_result['success']:
-                        progress = progress_result['progress']
-                        progress_info = {
-                            'status': progress.status,
-                            'time_spent_minutes': progress.time_spent_minutes,
-                            'completed_at': progress.completed_at,
-                            'last_accessed': progress.last_accessed,
-                            'notes': progress.notes
-                        }
-                    else:
-                        progress_info = {
-                            'status': 'not_started',
-                            'time_spent_minutes': 0,
-                            'completed_at': None,
-                            'last_accessed': None,
-                            'notes': ''
-                        }
+                    # Default progress info if none exists
+                    progress_info = progress_dict.get(lesson.id, {
+                        'status': 'not_started',
+                        'time_spent_minutes': 0,
+                        'completed_at': None,
+                        'last_accessed': None,
+                        'notes': ''
+                    })
                     
                     lesson_data.append({
                         'lesson': lesson,

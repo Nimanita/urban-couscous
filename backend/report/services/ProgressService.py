@@ -1,6 +1,4 @@
-"""
-report/services/ProgressService.py - Progress tracking business logic
-"""
+
 from django.db import transaction
 from django.db.models import Sum, Count
 from django.utils import timezone
@@ -21,6 +19,37 @@ class ProgressService:
                 defaults={'status': 'not_started'}
             )
             return {'success': True, 'progress': progress, 'created': created}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_progress_for_lessons(student, lesson_ids):
+        """
+        Get progress for multiple lessons in a single query (OPTIMIZED)
+        Returns a dictionary mapping lesson_id -> progress_info
+        """
+        try:
+            # Fetch all progress records in ONE query
+            progress_records = Progress.objects.filter(
+                student=student,
+                lesson_id__in=lesson_ids
+            ).select_related('lesson')
+            
+            # Build dictionary for O(1) lookup
+            progress_dict = {}
+            for progress in progress_records:
+                progress_dict[progress.lesson_id] = {
+                    'status': progress.status,
+                    'time_spent_minutes': progress.time_spent_minutes,
+                    'completed_at': progress.completed_at,
+                    'last_accessed': progress.last_accessed,
+                    'notes': progress.notes
+                }
+            
+            return {
+                'success': True, 
+                'progress_dict': progress_dict
+            }
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
